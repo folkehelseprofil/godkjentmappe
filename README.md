@@ -1,2 +1,2 @@
-# godkjentmappe
-Lager mapper for godkjent friskvik filler :ok_hand:
+# Lager godkjentmappe :ok_hand:
+Denne funksjonen er for å lager mapper for godkjente friskvik filler.

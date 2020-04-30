@@ -1,109 +1,77 @@
-source('F:/Prosjekter/Kommunehelsa/PRODUKSJON/BIN/KHfunctions_20200103.r')  #krever nye pakker
+## source('F:/Prosjekter/Kommunehelsa/PRODUKSJON/BIN/KHfunctions_20200103.r')  #krever nye pakker
 
-KHaar<-2020
-modus<-"K"
+pkg <- c("RODBC", "DBI", "data.table", "glue", "fs", "logger", "magrittr")
+sapply(pkg, require, character.only = TRUE)
 
-globs<-SettGlobs(modus="KH")
-GodkjenteKuberTabell<-paste("KH",KHaar,"_KUBESTATUS",sep="")
-#FriskvikFiler<-paste("FRISKVIK",KHaar,sep="")
-FriskvikFiler<-"FRISKVIK"
+## aar <- 2020
+godkjent <- function(profil = c("FHP", "OVP"),
+                     modus = globglobs$KHgeoniv,
+                     aar = globglobs$KHaar, ...){
 
+  extra <- list(...)
 
-
-library(RODBC)
-mdb_file <- file.path(defpaths[1], globglobs$KHdbname)
-conn <- odbcDriverConnect(paste0("Driver={Microsoft Access Driver (*.mdb, *.accdb)};DBQ=",
+  ## Get connection to DB
+  mdb_file <- file.path(defpaths[1], globglobs$KHdbname)
+  conn <- RODBC::odbcDriverConnect(paste0("Driver={Microsoft Access Driver (*.mdb, *.accdb)};DBQ=",
                                  mdb_file))
 
-## ## kubeTBL
-## tbl_friskvik <- sqlFetch(conn, "FRISKVIK")
-## tbl_kubestatus <- sqlFetch(conn, GodkjenteKuberTabell)
-
-
-library(glue)
-tblCols <- c("PROFILTYPE", "INDIKATOR", "KUBE_NAVN", "MODUS", "AARGANG")
-tblName <- "FRISKVIK"
-sqlFrisk <- glue_sql("SELECT {`tblCols`*}
+  tblCols <- c("PROFILTYPE", "INDIKATOR", "KUBE_NAVN", "MODUS", "AARGANG")
+  tblName <- "FRISKVIK"
+  sqlFrisk <- glue::glue_sql("SELECT {`tblCols`*}
                       FROM {`tblName`}
-                      WHERE {`tblCols[5]`} = {KHaar}", .con = DBI::ANSI())
+                      WHERE {`tblCols[5]`} = {aar}", .con = DBI::ANSI())
 
-tbl_fsk <- sqlQuery(conn, sqlFrisk)
+  tbl_fsk <- RODBC::sqlQuery(conn, sqlFrisk)
 
-tblCols <- c("KUBE_NAVN", "VERSJON_PROFILAAR_GEO", "OK_PROFILAAR_GEO")
-tblName <- paste0("KH", KHaar, "_KUBESTATUS")
-sqlKube <- glue_sql("SELECT {`tblCols`*} from {`tblName`}", .con = DBI::ANSI())
+  tblCols <- c("KUBE_NAVN", "VERSJON_PROFILAAR_GEO", "OK_PROFILAAR_GEO")
+  tblName <- paste0("KH", aar, "_KUBESTATUS")
+  sqlKube <- glue::glue_sql("SELECT {`tblCols`*} from {`tblName`}", .con = DBI::ANSI())
 
-tbl_kube <- sqlQuery(conn, sqlKube)
+  tbl_kube <- RODBC::sqlQuery(conn, sqlKube)
 
-library(data.table)
-invisible(sapply(list(tbl_fsk, tbl_kube), setDT))
+  invisible(sapply(list(tbl_fsk, tbl_kube), setDT))
 
+  ## merge tabels
+  rawAlle <- tbl_fsk[tbl_kube, on = "KUBE_NAVN"]
 
+  ## filter more
+  utTYP <- profil[1]
+  utMDS <- modus
+  utOK <- 1
 
-## merge tabels
-rawAlle <- tbl_fsk[tbl_kube, on = "KUBE_NAVN"]
-
-## filter more
-utTYP <- "FHP"
-utMDS <- "K"
-utOK <- 1
-
-tblAlle <- rawAlle[PROFILTYPE == utTYP, ] %>%
-   .[MODUS == utMDS, ] %>%
-   .[OK_PROFILAAR_GEO == utOK, ]
+  tblAlle <- rawAlle[PROFILTYPE == utTYP, ] %>%
+    .[MODUS == utMDS, ] %>%
+    .[OK_PROFILAAR_GEO == utOK, ]
 
 
-## Create filenames
-fileNames <- tblAlle[, filename := paste0(INDIKATOR, "_", VERSJON_PROFILAAR_GEO, ".csv")][["filename"]]
+  ## Create filenames
+  fileNames <- tblAlle[, filename := paste0(INDIKATOR, "_", VERSJON_PROFILAAR_GEO, ".csv")][["filename"]]
 
-library(fs)
+  ## Root folder where the file is
+  pathRoot <- defpaths[1]
+  pathDir <- globglobs$FriskVDir_K
 
-## Root folder where the file is
-pathRoot <- defpaths[1]
-pathDir <- globglobs$FriskVDir_K
-KHaar
 
-batchdate<-SettKHBatchDate()
+  batchdate<-SettKHBatchDate()
 
-rootPath <- paste0(pathRoot, "/", pathDir, KHaar)
-fileFrom <- file.path(rootPath, "CSV")
-fileTo <- file.path(rootPath, "GODKJENT", batchdate)
+  rootPath <- paste0(pathRoot, "/", pathDir, aar)
+  fileFrom <- file.path(rootPath, "CSV")
+  fileTo <- file.path(rootPath, "GODKJENT", batchdate)
 
-## fileComplete <- sapply(fileNames, function(x) file.path(fileFrom, x))
-library(logger)
+  ## Check if folder exists
+  if (!fs::dir_exists(fileTo)) fs::dir_create(fileTo)
 
-for (i in fileNames){
-  outFile <- file.path(fileFrom, i)
-  inFile <- file.path(fileTo, i)
-  logger::log_info(paste0("Filnavn: ", i))
-  ## logger::log_info(paste0("Flytt fil: ", outFile))
-  ## logger::log_info(paste0("Legges til: ", inFile))
-  ## fs::file_copy(path, new_path, overwrite = FALSE)
+  ## fileComplete <- sapply(fileNames, function(x) file.path(fileFrom, x))
+
+  for (i in fileNames){
+    outFile <- file.path(fileFrom, i)
+    inFile <- file.path(fileTo, i)
+    logger::log_info(paste0("Filnavn: ", i))
+    fs::file_copy(path, new_path, overwrite = FALSE)
+  }
+
+  cat(paste0("\n*********\n", length(fileNames), " filer er kopiert til denne mappen:\n ",
+             fileTo, "/\n*********\n"))
 }
 
-cat(paste0("\n*********\n Alle filer er kopiert til denne mappen:\n ",
-           fileTo, "/\n*********\n"))
-
-
-
-odbcCloseAll()
-
-
-
-## ## Test for speed
-## library(microbenchmark)
-## microbenchmark(
-
-##   tbl_friskvik <- sqlFetch(conn, "FRISKVIK"),
-##   df <- dplyr::tbl(conn2, "FRISKVIK") %>%
-##   dplyr::collect()
-
-## )
-
-
-##   FriskVDir_F="PRODUKTER/KUBER/FRISKVIK_FYLKE/",
-##   FriskVDir_K="PRODUKTER/KUBER/FRISKVIK_KOMM/",
-##   FriskVDir_B="PRODUKTER/KUBER/FRISKVIK_BYDEL/",
-##   ovpDir_F="PRODUKTER/KUBER/OVP_FYLKE/",
-##   ovpDir_K="PRODUKTER/KUBER/OVP_KOMM/",
-##   ovpDir_B="PRODUKTER/KUBER/OVP_BYDEL/",
+## odbcCloseAll()

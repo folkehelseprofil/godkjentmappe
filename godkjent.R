@@ -1,4 +1,4 @@
-## source('F:/Prosjekter/Kommunehelsa/PRODUKSJON/BIN/KHfunctions_20200103.r')  #krever nye pakker
+source('F:/Prosjekter/Kommunehelsa/PRODUKSJON/BIN/KHfunctions_20200430.R')  #krever nye pakker
 
 pkg <- c("RODBC", "DBI", "data.table", "glue", "fs", "logger", "magrittr")
 sapply(pkg, require, character.only = TRUE)
@@ -7,6 +7,8 @@ sapply(pkg, require, character.only = TRUE)
 godkjent <- function(profil = c("FHP", "OVP"),
                      modus = globglobs$KHgeoniv,
                      aar = globglobs$KHaar, ...){
+
+  cat(paste0("\n*****\n Finner utvalgte filer for ", profil[1], " og geonivå ", modus, "\n*****\n" ))
 
   extra <- list(...)
 
@@ -34,14 +36,12 @@ godkjent <- function(profil = c("FHP", "OVP"),
   ## merge tabels
   rawAlle <- tbl_fsk[tbl_kube, on = "KUBE_NAVN"]
 
-  ## filter more
+  ## filter data
   utTYP <- profil[1]
-  utMDS <- modus
-  utOK <- 1
 
   tblAlle <- rawAlle[PROFILTYPE == utTYP, ] %>%
-    .[MODUS == utMDS, ] %>%
-    .[OK_PROFILAAR_GEO == utOK, ]
+    .[MODUS == modus, ] %>%
+    .[OK_PROFILAAR_GEO == 1, ]
 
 
   ## Create filenames
@@ -49,28 +49,48 @@ godkjent <- function(profil = c("FHP", "OVP"),
 
   ## Root folder where the file is
   pathRoot <- defpaths[1]
-  pathDir <- globglobs$FriskVDir_K
+
+  ## Path for Profile
+  pathProfil <- switch(utTYP,
+                       "FHP" = c(
+                         globglobs$FriskVDir_F,
+                         globglobs$FriskVDir_K,
+                         globglobs$FriskVDir_B
+                       ),
+                       "OVP" = c(
+                         globglobs$ovpDir_F,
+                         globglobs$ovpDir_K,
+                         globglobs$ovpDir_B
+                       ))
 
 
+  ## Geolevels
+  modeProfil <- c("F", "K", "B")
+  indMode <- grep(modus, modeProfil, ignore.case = TRUE)
+
+  ## Get correct path to profil
+  pathDir <- pathProfil[indMode]
+
+  ## Current date style to create folder
   batchdate<-SettKHBatchDate()
 
-  rootPath <- paste0(pathRoot, "/", pathDir, aar)
-  fileFrom <- file.path(rootPath, "CSV")
-  fileTo <- file.path(rootPath, "GODKJENT", batchdate)
+
+  fileRoot <- paste0(pathRoot, "/", pathDir, aar)
+  fileFrom <- file.path(fileRoot, "CSV")
+  fileTo <- file.path(fileRoot, "GODKJENT", batchdate)
 
   ## Check if folder exists
   if (!fs::dir_exists(fileTo)) fs::dir_create(fileTo)
 
-  ## fileComplete <- sapply(fileNames, function(x) file.path(fileFrom, x))
-
   for (i in fileNames){
+    Sys.sleep(1)
     outFile <- file.path(fileFrom, i)
     inFile <- file.path(fileTo, i)
-    logger::log_info(paste0("Filnavn: ", i))
-    fs::file_copy(path, new_path, overwrite = FALSE)
+    logger::log_info(paste0("\nFilnavn: ", i))
+    fs::file_copy(path, new_path, overwrite = TRUE)
   }
 
-  cat(paste0("\n*********\n", length(fileNames), " filer er kopiert til denne mappen:\n ",
+  cat(paste0("\n*********\n", " ", length(fileNames), " filer er kopiert til denne mappen:\n ",
              fileTo, "/\n*********\n"))
 }
 

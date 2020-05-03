@@ -3,12 +3,15 @@ source('F:/Prosjekter/Kommunehelsa/PRODUKSJON/BIN/KHfunctions_20200430.R')  #kre
 pkg <- c("RODBC", "DBI", "data.table", "glue", "fs", "logger", "magrittr")
 sapply(pkg, require, character.only = TRUE)
 
+
 ## aar <- 2020
 godkjent <- function(profil = c("FHP", "OVP"),
                      modus = globglobs$KHgeoniv,
                      aar = globglobs$KHaar, ...){
 
-  cat(paste0("\n*****\n Finner utvalgte filer for ", profil[1], " og geonivå ", modus, "\n*****\n" ))
+  cat(paste0("\n********\n  Flytt av filer for ",
+             profil[1], " og geonivå ", modus, " for ",
+             aar, " begynner nå\n********\n" ))
 
   extra <- list(...)
 
@@ -74,24 +77,45 @@ godkjent <- function(profil = c("FHP", "OVP"),
   ## Current date style to create folder
   batchdate<-SettKHBatchDate()
 
-
   fileRoot <- paste0(pathRoot, "/", pathDir, aar)
   fileFrom <- file.path(fileRoot, "CSV")
   fileTo <- file.path(fileRoot, "GODKJENT", batchdate)
 
-  ## Check if folder exists
+  ## Check if folder exists else create
   if (!fs::dir_exists(fileTo)) fs::dir_create(fileTo)
 
+  ## fileComplete <- sapply(fileNames, function(x) file.path(fileFrom, x))
+
+  fileOK <- list()
+  fileKO <- list()
+
   for (i in fileNames){
-    Sys.sleep(1)
+
     outFile <- file.path(fileFrom, i)
     inFile <- file.path(fileTo, i)
-    logger::log_info(paste0("\nFilnavn: ", i))
-    fs::file_copy(path, new_path, overwrite = TRUE)
+
+    outMsg <- tryCatch(
+    {fs::file_copy(outFile, inFile, overwrite = TRUE)},
+    error = function(err) err)
+
+    if (inherits(outMsg, "error")){
+      message(paste0("\n--> OPS! Finner ikke filen: ", i, "\n"))
+      fileKO[i] <- i
+      next
+    } else {
+      message(paste0("Kopierer filen: ", i))
+      fileOK[i] <- i
+    }
+
   }
 
-  cat(paste0("\n*********\n", " ", length(fileNames), " filer er kopiert til denne mappen:\n ",
-             fileTo, "/\n*********\n"))
-}
+  cat(paste0("\n**********\n", " ",
+             length(fileOK),
+             " filer ble flyttet til ",
+             fileTo, "\n"))
 
-## odbcCloseAll()
+  cat(paste0("----------\n", " ",
+             length(fileKO),
+             " filer finnes ikke i ",
+             fileFrom, "\n**********\n"))
+}
